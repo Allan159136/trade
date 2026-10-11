@@ -311,6 +311,7 @@ async function loadData(){
     await Promise.all(AVAIL.map(async k=>{LIVE[k]=await (await fetch("data/"+k+".json",{cache:"no-store"})).json()}));
   }catch(e){AVAIL=[]}
 }
+const hhmm=ts=>{const d=new Date(String(ts).replace(" ","T")+"Z");return isNaN(d)?String(ts).slice(11,16):d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})};
 const live=(k,tf)=>LIVE[k]&&LIVE[k].tf&&LIVE[k].tf[tf||"H1"];
 function real(k,tf){
   const x=live(k,tf||TF).snapshot;
@@ -376,7 +377,7 @@ function select(i){
 function show(name){
   const m=MK[name],s=real(name),d=m.d;
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.m===name));
-  $("name").innerHTML=`<span class="ic sm">${ico(name)}</span>`+name+" · mis à jour à "+new Date(LIVE[name].updated).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  $("name").innerHTML=`<span class="ic sm">${ico(name)}</span>`+name+" · mis à jour à "+new Date(LIVE[name].updated).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+(LIVE[name].market_closed?" · marché fermé":"");
   $("price").textContent=s.c.toFixed(d);
   const c24=s.c24;
   $("chg").className=c24>=0?"up":"down";$("chg").textContent=sg(c24,2)+" % sur 24 bougies ("+TF+")";
@@ -393,7 +394,7 @@ function show(name){
   ].map(([k,v])=>`<div><span class="muted">${k}</span><b>${v}</b></div>`).join("");
 
   let rows="";
-  (LIVE[name].history||[]).forEach(r=>{rows+=`<tr><td>${String(r.ts).slice(11,16)||r.ts}</td><td>${r.close.toFixed(d)}</td><td class="${r.chg_1>=0?"up":"down"}">${sg(r.chg_1,2)} %</td><td>${r.rsi.toFixed(0)}</td><td class="${cls(r.bias)}">${r.bias}</td></tr>`});
+  (LIVE[name].history||[]).forEach(r=>{rows+=`<tr><td>${hhmm(r.ts)}</td><td>${r.close.toFixed(d)}</td><td class="${r.chg_1>=0?"up":"down"}">${sg(r.chg_1,2)} %</td><td>${r.rsi.toFixed(0)}</td><td class="${cls(r.bias)}">${r.bias}</td></tr>`});
   $("hist").innerHTML=`<tr><th>Heure</th><th>Prix</th><th>1 h</th><th>RSI</th><th>Biais</th></tr>`+rows;
 }
 

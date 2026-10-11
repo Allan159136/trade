@@ -23,11 +23,21 @@ TFS = {"M15": "15min", "H1": "1h", "H4": "4h", "D1": "1day"}
 
 PAUSE = 8  # secondes entre deux appels (le plan gratuit limite à ~8 appels/minute)
 
+# Marchés ouverts 7j/7 (crypto...) : on ne filtre pas le week-end pour eux. Ex. {"BTCUSD"}
+ALWAYS_OPEN = set()
 
-def fetch(symbol: str, interval: str) -> pd.DataFrame:
+
+def is_closed(ts) -> bool:
+    """Or et forex : fermés du vendredi 21h UTC au dimanche 22h UTC.
+    Le week-end, Twelve Data renvoie des bougies "bouche-trou" (presque plates) qu'on retire."""
+    wd, h = ts.weekday(), ts.hour  # lundi = 0 ... dimanche = 6
+    return wd == 5 or (wd == 4 and h >= 21) or (wd == 6 and h < 22)
+
+
+def fetch(symbol: str, interval: str, weekend_filter: bool = True) -> pd.DataFrame:
     r = requests.get(
         "https://api.twelvedata.com/time_series",
-        params={"symbol": symbol, "interval": interval, "outputsize": 120, "apikey": API_KEY},
+        params={"symbol": symbol, "interval": interval, "outputsize": 600, "timezone": "UTC", "apikey": API_KEY},
         timeout=20,
     )
     r.raise_for_status()
@@ -37,6 +47,11 @@ def fetch(symbol: str, interval: str) -> pd.DataFrame:
     df = pd.DataFrame(j["values"]).iloc[::-1].reset_index(drop=True)  # du plus ancien au plus récent
     for col in ["open", "high", "low", "close"]:
         df[col] = df[col].astype(float)
+    df = df.drop_duplicates(subset="datetime", keep="last").reset_index(drop=True)
+    if weekend_filter:
+        df = df[~pd.to_datetime(df["datetime"]).map(is_closed)].reset_index(drop=True)
+    if len(df) < 60:
+        raise RuntimeError(f"pas assez de bougies réelles ({len(df)})")
     return df
 
 
@@ -115,10 +130,12 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     done = []
     for name, symbol in MARKETS.items():
-        data = {"market": name, "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tf": {}}
+        closed = name not in ALWAYS_OPEN and is_closed(pd.Timestamp.now(tz="UTC"))
+        data = {"market": name, "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "market_closed": bool(closed), "tf": {}}
         try:
             for tf, interval in TFS.items():
-                df = fetch(symbol, interval)
+                df = fetch(symbol, interval, name not in ALWAYS_OPEN)
                 snap = snapshot(df)
                 data["tf"][tf] = {"snapshot": snap, "summary": summary(name, snap), "candles": candles(df)}
                 if tf == "H1":
